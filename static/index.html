@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1f3d">
+  <title>Asistente IA</title>
+  <link rel="stylesheet" href="/static/estilos.css">
+</head>
+<body>
+  <div class="app">
+    <header class="barra">
+      <div class="marca"><span class="logo">✦</span> <span id="nombre-ia">Asistente IA</span></div>
+      <button id="nueva" class="boton-chico" type="button">Nueva conversación</button>
+    </header>
+
+    <main id="mensajes" class="mensajes" aria-live="polite"></main>
+
+    <form id="formulario" class="entrada">
+      <textarea id="texto" rows="1" maxlength="2000" placeholder="Escribí tu pregunta..." aria-label="Mensaje"></textarea>
+      <button id="enviar" type="submit">Enviar</button>
+    </form>
+    <p class="aviso">Puede equivocarse. No escribas datos personales ni contraseñas.</p>
+  </div>
+
+  <script src="/static/chat.js"></script>
+</body>
+</html>
