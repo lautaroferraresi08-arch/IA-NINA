@@ -18,6 +18,80 @@ function nuevoId() {
 }
 var idCharla = nuevoId();
 
+// ----- Opciones (se recuerdan en este navegador) -----
+var botonVoz = document.getElementById("op-voz");
+var botonWeb = document.getElementById("op-web");
+var botonMic = document.getElementById("mic");
+var vozActiva = false, webActiva = false;
+
+function leerOpcion(k) { try { return localStorage.getItem(k) === "1"; } catch (e) { return false; } }
+function guardarOpcion(k, v) { try { localStorage.setItem(k, v ? "1" : "0"); } catch (e) {} }
+function pintarOpciones() {
+  botonVoz.setAttribute("aria-pressed", vozActiva);
+  botonWeb.setAttribute("aria-pressed", webActiva);
+}
+vozActiva = leerOpcion("nina_voz"); webActiva = leerOpcion("nina_web"); pintarOpciones();
+
+// ----- Voz: que la IA lea en voz alta -----
+var haySintesis = "speechSynthesis" in window;
+if (!haySintesis) { botonVoz.hidden = true; }
+
+function textoParaLeer(t) {
+  return t.replace(/```[\s\S]*?```/g, " (código) ")
+          .replace(/[*_`#>]/g, "")
+          .replace(/\s+/g, " ").trim();
+}
+function hablar(t) {
+  if (!haySintesis || !vozActiva) { return; }
+  speechSynthesis.cancel();
+  var partes = textoParaLeer(t).match(/[^.!?\n]+[.!?]*/g) || [];     // frases cortas: Chrome corta las muy largas
+  var voces = speechSynthesis.getVoices();
+  var voz = voces.filter(function (v) { return /^es[-_]AR/i.test(v.lang); })[0]
+         || voces.filter(function (v) { return /^es/i.test(v.lang); })[0];
+  partes.forEach(function (p) {
+    var u = new SpeechSynthesisUtterance(p.trim());
+    u.lang = voz ? voz.lang : "es-AR";
+    if (voz) { u.voice = voz; }
+    speechSynthesis.speak(u);
+  });
+}
+function callar() { if (haySintesis) { speechSynthesis.cancel(); } }
+
+botonVoz.addEventListener("click", function () {
+  vozActiva = !vozActiva; guardarOpcion("nina_voz", vozActiva); pintarOpciones();
+  if (!vozActiva) { callar(); }
+});
+botonWeb.addEventListener("click", function () {
+  webActiva = !webActiva; guardarOpcion("nina_web", webActiva); pintarOpciones();
+});
+
+// ----- Voz: hablarle a la IA (dictado) -----
+var Reconocimiento = window.SpeechRecognition || window.webkitSpeechRecognition;
+var reconocedor = null, escuchando = false;
+if (!Reconocimiento) { botonMic.hidden = true; } else { botonMic.hidden = false; }
+
+botonMic.addEventListener("click", function () {
+  if (escuchando && reconocedor) { reconocedor.stop(); return; }
+  callar();
+  reconocedor = new Reconocimiento();
+  reconocedor.lang = "es-AR";
+  reconocedor.interimResults = true;
+  reconocedor.continuous = false;
+  var dicho = "";
+  reconocedor.onstart = function () { escuchando = true; botonMic.classList.add("escuchando"); };
+  reconocedor.onresult = function (ev) {
+    dicho = "";
+    for (var i = 0; i < ev.results.length; i++) { dicho += ev.results[i][0].transcript; }
+    texto.value = dicho;
+  };
+  reconocedor.onerror = function () { dicho = ""; };
+  reconocedor.onend = function () {
+    escuchando = false; botonMic.classList.remove("escuchando");
+    if (dicho.trim()) { enviarMensaje(dicho); }      // al terminar de hablar, se envía solo
+  };
+  try { reconocedor.start(); } catch (e) {}
+});
+
 // ----- Convertir el texto de la IA (con **negritas**, listas, código) a HTML seguro -----
 function escapar(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -91,6 +165,7 @@ function enviarMensaje(m) {
   m = m.trim();
   if (!m || enviar.disabled) { return; }
 
+  callar();
   agregar("yo", m);
   texto.value = ""; texto.style.height = "auto";
   enviar.disabled = true;
@@ -102,12 +177,13 @@ function enviarMensaje(m) {
   fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: idCharla, mensaje: m })
+    body: JSON.stringify({ id: idCharla, mensaje: m, busqueda: webActiva })
   })
     .then(function (r) { return r.json(); })
     .then(function (datos) {
       pensando.classList.remove("pensando");
       pensando.innerHTML = aHtml(datos.respuesta || "No pude responder.");
+      hablar(datos.respuesta || "");
     })
     .catch(function () {
       pensando.classList.remove("pensando");
@@ -137,6 +213,7 @@ botonNueva.addEventListener("click", function () {
   fetch("/api/nueva", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: idCharla }) }).catch(function () {});
   idCharla = nuevoId();
+  callar();
   mensajes.innerHTML = "";
   bienvenida();
   texto.focus();
