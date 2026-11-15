@@ -89,6 +89,18 @@ body {
 }
 .entrada button:disabled { opacity: .5; cursor: default; }
 
+/* Opciones: voz e internet */
+.opciones { display: flex; gap: 8px; padding: 6px 16px 0; }
+.chip {
+  background: transparent; color: var(--suave); border: 1px solid var(--borde);
+  padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: .85rem;
+}
+.chip[aria-pressed="true"] { color: var(--texto-yo); background: var(--burbuja-yo); border-color: var(--burbuja-yo); font-weight: 700; }
+.entrada .mic { padding: 0 14px; background: var(--panel); color: var(--texto); border: 1px solid var(--borde); font-size: 1.2rem; }
+.entrada .mic.escuchando { background: #b3261e; border-color: #b3261e; animation: latido 1s infinite; }
+.entrada .mic[hidden] { display: none; }
+@keyframes latido { 50% { opacity: .6; } }
+
 .aviso { text-align: center; color: var(--suave); font-size: .75rem; padding: 4px 16px 10px; }
 
-@media (prefers-reduced-motion: reduce) { .pensando span { animation: none; opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .pensando span { animation: none; opacity: .7; } .mic.escuchando { animation: none; } }
