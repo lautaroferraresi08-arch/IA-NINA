@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f1f3d">
-  <title>Asistente IA</title>
+  <title>Nina</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icono-192.png">
+  <link rel="apple-touch-icon" href="/static/icono-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="/static/estilos.css">
 </head>
 <body>
@@ -16,7 +20,12 @@
 
     <main id="mensajes" class="mensajes" aria-live="polite"></main>
 
+    <div class="opciones">
+      <button id="op-voz" class="chip" type="button" aria-pressed="false" title="Que lea las respuestas en voz alta">🔊 Voz</button>
+      <button id="op-web" class="chip" type="button" aria-pressed="false" title="Buscar datos actuales en Google">🌐 Internet</button>
+    </div>
     <form id="formulario" class="entrada">
+      <button id="mic" class="mic" type="button" aria-label="Hablar" title="Hablar" hidden>🎤</button>
       <textarea id="texto" rows="1" maxlength="2000" placeholder="Escribí tu pregunta..." aria-label="Mensaje"></textarea>
       <button id="enviar" type="submit">Enviar</button>
     </form>
@@ -24,5 +33,10 @@
   </div>
 
   <script src="/static/chat.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(function () {});
+    }
+  </script>
 </body>
 </html>
