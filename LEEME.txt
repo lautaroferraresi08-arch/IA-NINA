@@ -1,0 +1,58 @@
+MI ASISTENTE IA - Pagina de chat con Gemini
+===========================================
+
+CARPETA
+  app.py            -> el servidor (Python + Flask). Guarda la clave y habla con Gemini.
+  requirements.txt  -> las librerias que hay que instalar.
+  static/           -> la pagina: index.html (estructura), estilos.css (colores), chat.js (logica).
+
+PASOS (Windows)
+  1) Abri el Simbolo del sistema DENTRO de esta carpeta
+     (en el Explorador: clic en la barra de direccion, escribi cmd y Enter).
+  2) Instala las librerias (una sola vez):
+        pip install -r requirements.txt
+  3) La clave de Google tiene que estar guardada (ya la guardaste con setx).
+     Si no: setx GEMINI_API_KEY "tu_clave"  y abri una ventana nueva.
+  4) Inicia el servidor:
+        python app.py
+  5) Abri en el navegador:
+        http://127.0.0.1:5000
+  6) Para apagar el servidor: Ctrl + C en la ventana negra.
+
+IMPORTANTE
+  - La pagina solo funciona mientras la ventana negra este abierta con el servidor corriendo.
+  - La clave nunca esta en la pagina: vive en el servidor.
+  - Si da "modelo no encontrado", cambia la linea MODELO = ... en app.py.
+  - Para cambiar el NOMBRE del asistente: edita la linea NOMBRE_IA = "Nina" en app.py y reinicia el servidor.
+  - Si queres cambiar el comportamiento de la IA, edita el texto INSTRUCCIONES en app.py
+    y reinicia el servidor (Ctrl + C y python app.py).
+
+=====================================================
+PUBLICARLA EN INTERNET (Railway u otro hosting)
+=====================================================
+Archivos que ya estan listos para esto:
+  Procfile          -> le dice al hosting como arrancar el servidor (gunicorn).
+  requirements.txt  -> librerias que instala solo el hosting.
+  .gitignore        -> evita subir basura (nunca subas tu clave).
+
+PASOS (los nombres de los botones pueden variar un poco):
+  1) Crea una cuenta en github.com y un repositorio nuevo (por ejemplo "nina-ia").
+  2) Subi los archivos de esta carpeta al repositorio:
+     "Add file" -> "Upload files" -> arrastra app.py, requirements.txt, Procfile,
+     .gitignore y la carpeta static. (NO subas ninguna clave.)
+  3) En railway.com: "New Project" -> "Deploy from GitHub repo" -> elegi tu repositorio.
+  4) En el proyecto, pestana "Variables": agrega
+        GEMINI_API_KEY   con el valor de tu clave
+     (asi la clave queda guardada en el hosting y no en el codigo).
+  5) En "Settings" -> "Networking" -> genera un dominio publico.
+  6) Abri ese link: ya la puede ver cualquiera.
+
+PROTECCIONES YA INCLUIDAS (se cambian al inicio de app.py)
+  LIMITE_POR_MINUTO = 20   mensajes por minuto por persona
+  MAX_POR_DIA = 300        mensajes por dia entre todas las personas
+
+ANTES DE COMPARTIR EL LINK, TENE EN CUENTA
+  - Cualquiera que entre usa tu cupo de Gemini. Si se acaba, la pagina deja de responder ese dia.
+  - Con el plan gratis, Google puede usar lo que se escriba para mejorar sus productos.
+    Por eso la pagina avisa que no se escriban datos personales.
+  - Revisa en el panel del hosting si tu plan tiene costo.
