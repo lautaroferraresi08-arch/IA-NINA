@@ -15,6 +15,7 @@ from datetime import date
 
 from flask import Flask, jsonify, request, send_from_directory
 from google import genai
+from google.genai import types
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # ---------- Configuración ----------
@@ -23,6 +24,7 @@ MAX_MENSAJE = 2000                 # largo máximo de lo que puede escribir la p
 MAX_CHARLAS = 200                  # cuántas conversaciones guardamos en memoria
 LIMITE_POR_MINUTO = 20             # mensajes por minuto por persona (evita abusos)
 MAX_POR_DIA = 300                  # tope de mensajes por día entre TODAS las personas (protege tu cupo)
+MAX_BUSQUEDAS_DIA = 40             # tope de consultas CON búsqueda en Google por día (el cupo gratis es más chico)
 
 # El nombre de tu asistente. Cambialo acá y se actualiza en la página y en la IA.
 NOMBRE_IA = "Nina"
@@ -33,7 +35,7 @@ Si te preguntan cómo te llamás, decí que sos __NOMBRE__. Si te preguntan qué
 Podés ayudar con cualquier tema: estudio, programación, ciencia, consejos, etc.
 Explicá de forma clara y con ejemplos, y adaptá el nivel a lo que te pidan.
 Si no sabés algo o no estás seguro, decilo en vez de inventar.
-No tenés acceso a internet: si te preguntan por noticias o datos de hoy, avisá que podrías estar desactualizado.
+Normalmente no tenés acceso a internet: si te preguntan por noticias o datos de hoy, avisá que podrías estar desactualizado. Cuando la persona activa la búsqueda, recibís resultados de Google: usalos para dar datos actuales y aclará que vienen de la web.
 
 Si entendiste, respondé solamente: Listo.
 """.replace("__NOMBRE__", NOMBRE_IA)
@@ -62,7 +64,7 @@ usos = {}
 
 
 # Contador de mensajes del día (se reinicia solo cada día)
-hoy = {"fecha": date.today(), "cantidad": 0}
+hoy = {"fecha": date.today(), "cantidad": 0, "busquedas": 0}
 
 
 def supera_tope_diario():
@@ -70,10 +72,23 @@ def supera_tope_diario():
     if hoy["fecha"] != date.today():
         hoy["fecha"] = date.today()
         hoy["cantidad"] = 0
+        hoy["busquedas"] = 0
     if hoy["cantidad"] >= MAX_POR_DIA:
         return True
     hoy["cantidad"] += 1
     return False
+
+
+def puede_buscar():
+    """True si todavía queda cupo de búsquedas en Google para hoy (y lo descuenta)."""
+    if hoy["fecha"] != date.today():
+        hoy["fecha"] = date.today()
+        hoy["cantidad"] = 0
+        hoy["busquedas"] = 0
+    if hoy["busquedas"] >= MAX_BUSQUEDAS_DIA:
+        return False
+    hoy["busquedas"] += 1
+    return True
 
 
 def pasa_el_limite(ip):
@@ -88,11 +103,14 @@ def pasa_el_limite(ip):
     return False
 
 
-def enviar(chat, texto):
-    """Manda un mensaje a Gemini. Si está saturado (503) o limitado (429), reintenta hasta 3 veces."""
+def enviar(chat, texto, config=None):
+    """Manda un mensaje a Gemini. Si está saturado (503) o limitado (429), reintenta hasta 3 veces.
+    'config' sirve para activar la búsqueda en Google solo en este mensaje."""
     ultimo_error = None
     for intento in range(3):
         try:
+            if config is not None:
+                return chat.send_message(texto, config=config)
             return chat.send_message(texto)
         except Exception as error:
             ultimo_error = error
@@ -124,6 +142,14 @@ def inicio():
     return send_from_directory("static", "index.html")
 
 
+@app.route("/sw.js")
+def service_worker():
+    # Va en la raíz para que pueda controlar toda la app.
+    r = send_from_directory("static", "sw.js", mimetype="application/javascript")
+    r.headers["Cache-Control"] = "no-cache"
+    return r
+
+
 @app.route("/api/config")
 def configuracion():
     """La página le pregunta acá cómo se llama el asistente."""
@@ -148,9 +174,27 @@ def chat():
     if supera_tope_diario():
         return jsonify({"respuesta": "Hoy se alcanzó el límite de consultas. Probá mañana."}), 429
 
+    quiere_buscar = bool(datos.get("busqueda"))
+    aviso = ""
+    config = None
+    if quiere_buscar:
+        if puede_buscar():
+            config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
+        else:
+            aviso = "\n\n*(Hoy se acabó el cupo de búsquedas en internet; respondí sin buscar.)*"
+
     try:
-        respuesta = enviar(obtener_chat(id_charla), mensaje)
-        return jsonify({"respuesta": respuesta.text or "No tengo una respuesta para eso."})
+        chat_actual = obtener_chat(id_charla)
+        try:
+            respuesta = enviar(chat_actual, mensaje, config)
+        except Exception as error:
+            # Si falló justo por la búsqueda (por ejemplo el modelo no la soporta), probamos sin ella.
+            if config is None:
+                raise
+            print("La búsqueda falló, reintento sin buscar:", error)
+            respuesta = enviar(chat_actual, mensaje)
+            aviso = "\n\n*(No pude buscar en internet esta vez; respondí sin buscar.)*"
+        return jsonify({"respuesta": (respuesta.text or "No tengo una respuesta para eso.") + aviso})
     except Exception as error:
         print("Error con Gemini:", error)    # el detalle queda en la ventana de cmd, no en la página
         return jsonify({"respuesta": "No pude responder en este momento. Probá de nuevo en un rato."}), 503
