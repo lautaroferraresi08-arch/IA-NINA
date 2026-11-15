@@ -184,6 +184,11 @@ function enviarMensaje(m) {
       pensando.classList.remove("pensando");
       pensando.innerHTML = aHtml(datos.respuesta || "No pude responder.");
       hablar(datos.respuesta || "");
+      if (datos.sin_busqueda) {                 // Google dijo que no hay cupo: apagamos el botón un rato
+        webActiva = false; guardarOpcion("nina_web", false); pintarOpciones();
+        botonWeb.title = "La búsqueda no está disponible por ahora (sin cupo)";
+        botonWeb.style.opacity = ".5";
+      }
     })
     .catch(function () {
       pensando.classList.remove("pensando");
