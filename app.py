@@ -23,7 +23,7 @@ MODELO = "gemini-3.5-flash-lite"   # si da "modelo no encontrado", cambialo por 
 MAX_MENSAJE = 2000                 # largo máximo de lo que puede escribir la persona
 MAX_CHARLAS = 200                  # cuántas conversaciones guardamos en memoria
 LIMITE_POR_MINUTO = 20             # mensajes por minuto por persona (evita abusos)
-MAX_POR_DIA = 300                  # tope de mensajes por día entre TODAS las personas (protege tu cupo)
+MAX_POR_DIA = 200                  # tope de mensajes por día entre TODAS las personas (protege tu cupo)
 MAX_BUSQUEDAS_DIA = 40             # tope de consultas CON búsqueda en Google por día (el cupo gratis es más chico)
 
 # El nombre de tu asistente. Cambialo acá y se actualiza en la página y en la IA.
@@ -35,7 +35,7 @@ Si te preguntan cómo te llamás, decí que sos __NOMBRE__. Si te preguntan qué
 Podés ayudar con cualquier tema: estudio, programación, ciencia, consejos, etc.
 Explicá de forma clara y con ejemplos, y adaptá el nivel a lo que te pidan.
 Si no sabés algo o no estás seguro, decilo en vez de inventar.
-Normalmente no tenés acceso a internet: si te preguntan por noticias o datos de hoy, avisá que podrías estar desactualizado. Cuando la persona activa la búsqueda, recibís resultados de Google: usalos para dar datos actuales y aclará que vienen de la web.
+Normalmente no tenés acceso a internet: si te preguntan por noticias o datos de hoy, avisá que podrías estar desactualizado. Si en un mensaje recibís resultados de búsqueda de Google, usalos y aclará que vienen de la web. Si no los recibiste, NUNCA digas que buscaste en internet ni que los datos son de la web.
 
 Si entendiste, respondé solamente: Listo.
 """.replace("__NOMBRE__", NOMBRE_IA)
@@ -79,8 +79,15 @@ def supera_tope_diario():
     return False
 
 
+# Si Google dice que no hay cupo de búsqueda (429), la apagamos un rato para no insistir.
+busqueda_bloqueada = {"hasta": 0}
+PAUSA_BUSQUEDA = 3600   # segundos
+
+
 def puede_buscar():
     """True si todavía queda cupo de búsquedas en Google para hoy (y lo descuenta)."""
+    if time.time() < busqueda_bloqueada["hasta"]:
+        return False
     if hoy["fecha"] != date.today():
         hoy["fecha"] = date.today()
         hoy["cantidad"] = 0
@@ -103,7 +110,7 @@ def pasa_el_limite(ip):
     return False
 
 
-def enviar(chat, texto, config=None):
+def enviar(chat, texto, config=None, reintentar=True):
     """Manda un mensaje a Gemini. Si está saturado (503) o limitado (429), reintenta hasta 3 veces.
     'config' sirve para activar la búsqueda en Google solo en este mensaje."""
     ultimo_error = None
@@ -116,7 +123,7 @@ def enviar(chat, texto, config=None):
             ultimo_error = error
             texto_error = str(error)
             # Solo vale la pena reintentar si Google está saturado
-            if "503" not in texto_error and "429" not in texto_error:
+            if not reintentar or ("503" not in texto_error and "429" not in texto_error):
                 break
             time.sleep(2)
     raise ultimo_error
@@ -176,25 +183,33 @@ def chat():
 
     quiere_buscar = bool(datos.get("busqueda"))
     aviso = ""
+    sin_busqueda = False
     config = None
     if quiere_buscar:
         if puede_buscar():
             config = types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())])
         else:
-            aviso = "\n\n*(Hoy se acabó el cupo de búsquedas en internet; respondí sin buscar.)*"
+            sin_busqueda = True
+            aviso = "\n\n*(Ahora no hay cupo de búsqueda en internet; respondí sin buscar.)*"
 
     try:
         chat_actual = obtener_chat(id_charla)
         try:
-            respuesta = enviar(chat_actual, mensaje, config)
+            respuesta = enviar(chat_actual, mensaje, config, reintentar=False)
         except Exception as error:
             # Si falló justo por la búsqueda (por ejemplo el modelo no la soporta), probamos sin ella.
             if config is None:
                 raise
             print("La búsqueda falló, reintento sin buscar:", error)
-            respuesta = enviar(chat_actual, mensaje)
+            if "429" in str(error):
+                busqueda_bloqueada["hasta"] = time.time() + PAUSA_BUSQUEDA
+                sin_busqueda = True
             aviso = "\n\n*(No pude buscar en internet esta vez; respondí sin buscar.)*"
-        return jsonify({"respuesta": (respuesta.text or "No tengo una respuesta para eso.") + aviso})
+            nota = ("(Nota interna: para esta pregunta NO pudiste buscar en internet. No digas que buscaste "
+                    "ni que los datos vienen de la web. Si piden datos actuales, avisá que pueden estar desactualizados.)\n\n")
+            respuesta = enviar(chat_actual, nota + mensaje)
+        return jsonify({"respuesta": (respuesta.text or "No tengo una respuesta para eso.") + aviso,
+                        "sin_busqueda": sin_busqueda})
     except Exception as error:
         print("Error con Gemini:", error)    # el detalle queda en la ventana de cmd, no en la página
         return jsonify({"respuesta": "No pude responder en este momento. Probá de nuevo en un rato."}), 503
